@@ -1,0 +1,123 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Prometheus 告警规则 — Mneme3
+# ═══════════════════════════════════════════════════════════════════════════
+
+groups:
+  - name: mneme3-alerts
+    interval: 30s
+    rules:
+
+      # ── 服务存活 ──────────────────────────────────────────────────────────
+      - alert: MnemeAPIDown
+        expr: up{job="mneme-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: "backend"
+        annotations:
+          summary: "Mneme API 不可达"
+          description: "{{ $labels.instance }} 已宕机超过 1 分钟"
+
+      - alert: MnemeWorkerDown
+        expr: up{job="mneme-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: "backend"
+        annotations:
+          summary: "Mneme Worker 不可达"
+          description: "Worker {{ $labels.instance }} 已宕机超过 1 分钟"
+
+      # ── 数据库 ────────────────────────────────────────────────────────────
+      - alert: DatabaseUnavailable
+        expr: mneme_db_ready == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: "backend"
+        annotations:
+          summary: "数据库不可用"
+          description: "PostgreSQL 连接检查失败，持续 30 秒"
+
+      - alert: DatabasePoolExhaustion
+        expr: mneme_db_pool_total_connections / mneme_db_pool_size > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "数据库连接池即将耗尽"
+          description: "当前使用 {{ $value | humanizePercentage }} 的连接池"
+
+      # ── Redis ─────────────────────────────────────────────────────────────
+      - alert: RedisUnavailable
+        expr: mneme_redis_ready == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "Redis 不可用"
+          description: "Redis 连接检查失败（降级运行中）"
+
+      # ── HTTP 性能 ─────────────────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: rate(mneme_http_errors_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "HTTP 5xx 错误率过高"
+          description: "最近 5 分钟错误率 {{ $value | humanizePercentage }}"
+
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(mneme_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "P95 请求延迟超过 2 秒"
+          description: "P95 延迟为 {{ $value }}s"
+
+      # ── 系统资源 ──────────────────────────────────────────────────────────
+      - alert: HighMemoryUsage
+        expr: mneme_system_memory_usage_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+          team: "infra"
+        annotations:
+          summary: "系统内存使用率过高"
+          description: "内存使用率 {{ $value }}%"
+
+      - alert: HighCPUUsage
+        expr: mneme_system_cpu_usage_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: "infra"
+        annotations:
+          summary: "系统 CPU 使用率过高"
+          description: "CPU 使用率 {{ $value }}%"
+
+      - alert: HighProcessMemory
+        expr: mneme_process_memory_rss_bytes > 2e9
+        for: 5m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "进程 RSS 超过 2 GB"
+          description: "当前 RSS {{ $value | humanize1024 }}"
+
+      - alert: OutboxBacklog
+        expr: mneme_outbox_pending > 100
+        for: 10m
+        labels:
+          severity: warning
+          team: "backend"
+        annotations:
+          summary: "出站事件积压"
+          description: "待处理事件数 {{ $value }}"

@@ -1,0 +1,6 @@
+
+# Local backups
+backups/
+
+# Server config files
+config/

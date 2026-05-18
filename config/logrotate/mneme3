@@ -1,0 +1,24 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Logrotate — Mneme3 日志轮转配置
+# 安装: cp config/logrotate/mneme3 /etc/logrotate.d/mneme3
+# ═══════════════════════════════════════════════════════════════════════════
+
+/var/log/mneme/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    dateext
+    dateformat -%Y%m%d
+    sharedscripts
+    postrotate
+        # 重启 journald 以释放文件句柄 (systemd 日志无需此操作)
+        # systemctl kill -s HUP rsyslog 2>/dev/null || true
+        # systemctl restart mneme-api 2>/dev/null || true
+    endscript
+}
+
+# 系统 journal 日志占用限制 (通过 journald.conf 更合适)
+# 此处仅为参考

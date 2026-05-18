@@ -1,0 +1,5 @@
+Alembic migrations for Mneme.
+
+Run from the repository root:
+
+    alembic -c mneme/db/alembic/alembic.ini upgrade head

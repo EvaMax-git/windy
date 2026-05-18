@@ -1,0 +1,1 @@
+import{d as o,o as t,c as s,a as c,t as a,e as n}from"./index-BFW-_hT-.js";const i={class:"mb-6"},l={class:"text-xl font-semibold text-surface-900"},r={key:0,class:"mt-1 text-sm text-surface-500"},_=o({__name:"PageHeader",props:{title:{},subtitle:{}},setup(e){return(m,d)=>(t(),s("div",i,[c("h1",l,a(e.title),1),e.subtitle?(t(),s("p",r,a(e.subtitle),1)):n("",!0)]))}});export{_};

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mneme3"
+version = "0.1.0"
+description = "Mneme v4.1.1 Core Platform"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "sqlalchemy>=2.0",
+    "alembic>=1.12",
+    "psycopg2-binary>=2.9",
+    "uvicorn>=0.23",
+    "python-dotenv>=1.0",
+    "redis>=5.0",
+    "cryptography>=41.0",
+    "httpx>=0.28",
+    "tenacity>=9.0",
+    "python-multipart>=0.0.9",
+    "python-magic>=0.4.27",
+    "networkx>=3.0",
+    "numpy>=1.24",
+    "prometheus-client>=0.20",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "testcontainers>=4.0",
+    "prometheus-client>=0.20",
+    "psutil>=5.9",
+]
+
+[tool.setuptools.packages.find]
+include = ["mneme*"]
+exclude = ["mneme_data*", "tests*", "doc*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+mneme = [
+    "static/index.html",
+    "static/assets/*",
+    "web/dist/index.html",
+    "web/dist/assets/*",
+]

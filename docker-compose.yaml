@@ -1,0 +1,237 @@
+name: mneme3
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Mneme3 — Docker Compose (核心服务 + Observability Stack)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 低内存部署 (RAM <= 2GB):
+#   建议只启动核心 4 服务，Observability stack 按需手动启动。
+#   docker compose up -d postgres redis api worker
+#
+# 使用方式:
+#   docker compose up -d                              # 启动全部服务
+#   docker compose up -d api worker                   # 仅核心服务
+#   docker compose up -d prometheus grafana            # 仅监控栈
+#   docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d
+#
+# 环境变量参见 .env.example
+# ═══════════════════════════════════════════════════════════════════════════
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── 核心: PostgreSQL (pgvector) ──────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    mem_limit: 400m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mneme}
+      POSTGRES_USER: ${POSTGRES_USER:-mneme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mneme_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c effective_cache_size=256MB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./mneme/db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      - ./backups/postgres:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ── 核心: Redis ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    command: redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ── 核心: Mneme API ──────────────────────────────────────────────────────
+  api:
+    build: .
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      MNEME_ENV: ${MNEME_ENV:-local}
+      MNEME_LOG_LEVEL: ${MNEME_LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MNEME_BACKUP_ROOT: ${MNEME_BACKUP_ROOT:-/backups}
+      MNEME_BOOTSTRAP_OWNER_USERNAME: ${MNEME_BOOTSTRAP_OWNER_USERNAME:-owner}
+      MNEME_BOOTSTRAP_OWNER_EMAIL: ${MNEME_BOOTSTRAP_OWNER_EMAIL:-owner@example.com}
+      MNEME_BOOTSTRAP_OWNER_PASSWORD: ${MNEME_BOOTSTRAP_OWNER_PASSWORD:-change-me}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+      - mneme_data:/mneme_data
+    command:
+      - "uvicorn"
+      - "mneme.main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--proxy-headers"
+      - "--forwarded-allow-ips=*"
+    logging: *default-logging
+
+  # ── 核心: Mneme Worker ───────────────────────────────────────────────────
+  worker:
+    build: .
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      MNEME_ENV: ${MNEME_ENV:-local}
+      MNEME_LOG_LEVEL: ${MNEME_LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "mneme.worker"]
+    logging: *default-logging
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # Observability Stack
+  # ═════════════════════════════════════════════════════════════════════════
+
+  # ── 指标采集: Prometheus ──────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    mem_limit: 128m
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - api
+    logging: *default-logging
+
+  # ── 可视化: Grafana ───────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-mneme_grafana}
+      GF_INSTALL_PLUGINS: ""
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    logging: *default-logging
+
+  # ── 数据库指标导出: postgres-exporter ──────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    mem_limit: 32m
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+
+  # ── Redis 指标导出: redis-exporter ─────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.65.0
+    restart: unless-stopped
+    mem_limit: 32m
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+
+  # ── 主机指标: node-exporter ────────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    mem_limit: 32m
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    pid: "host"
+    ports:
+      - "9100:9100"
+    volumes:
+      - /:/host:ro
+    logging: *default-logging
+
+  # ── 容器指标: cAdvisor ─────────────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    mem_limit: 64m
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  mneme_data:
+  prometheus_data:
+  grafana_data:
