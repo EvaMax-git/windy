@@ -633,7 +633,7 @@ def create_document(
                 "canonical_uri": canonical_uri,
                 "sensitivity_level": payload.sensitivity_level.value,
                 "summary": payload.summary,
-                "created_by_user_id": context.actor.actor_id,
+                "created_by_user_id": context.actor.actor_id if context.actor.actor_type == "user" else None,
                 "sub_library_id": payload.sub_library_id,
             },
         ).one()
@@ -1450,8 +1450,13 @@ def insert_chunks(
     Returns:
         List of inserted :class:`KnowledgeChunkRead` rows.
     """
+    from mneme.knowledge.jieba_segment import segment
+
     results: list[KnowledgeChunkRead] = []
     for ch in chunks:
+        # Segment Chinese text for FTS indexing (matches search-time segmentation)
+        raw_text = ch["chunk_text"]
+        segmented_text = segment(raw_text) if raw_text else raw_text
         row = db.execute(
             _INSERT_CHUNK,
             {
@@ -1460,7 +1465,7 @@ def insert_chunks(
                 "block_id": ch.get("block_id"),
                 "chunk_order": ch["chunk_order"],
                 "document_version": ch["document_version"],
-                "chunk_text": ch["chunk_text"],
+                "chunk_text": segmented_text,
                 "token_count": ch.get("token_count"),
             },
         ).one()

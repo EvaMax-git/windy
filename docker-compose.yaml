@@ -80,6 +80,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       MNEME_BACKUP_ROOT: ${MNEME_BACKUP_ROOT:-/backups}
+      MNEME_STORAGE_ROOT: /mneme_data
+      MNEME_VAULT_KEK: ${MNEME_VAULT_KEK}
       MNEME_BOOTSTRAP_OWNER_USERNAME: ${MNEME_BOOTSTRAP_OWNER_USERNAME:-owner}
       MNEME_BOOTSTRAP_OWNER_EMAIL: ${MNEME_BOOTSTRAP_OWNER_EMAIL:-owner@example.com}
       MNEME_BOOTSTRAP_OWNER_PASSWORD: ${MNEME_BOOTSTRAP_OWNER_PASSWORD:-change-me}
@@ -92,7 +94,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/backups
-      - mneme_data:/mneme_data
+      - ./mneme_data:/mneme_data
     command:
       - "uvicorn"
       - "mneme.main:app"
@@ -114,11 +116,15 @@ services:
       MNEME_LOG_LEVEL: ${MNEME_LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MNEME_STORAGE_ROOT: /mneme_data
+      MNEME_VAULT_KEK: ${MNEME_VAULT_KEK}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ./mneme_data:/mneme_data
     command: ["python", "-m", "mneme.worker"]
     logging: *default-logging
 

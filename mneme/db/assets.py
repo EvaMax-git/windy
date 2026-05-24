@@ -308,6 +308,22 @@ _UPDATE_INGEST_STATE = text(
     """
 ).bindparams(bindparam("asset_id", type_=PG_UUID(as_uuid=True)))
 
+_UPDATE_KNOWLEDGE_STATE = text(
+    """
+    UPDATE assets
+    SET knowledge_state = :new_state,
+        updated_at = now()
+    WHERE asset_id = :asset_id
+    RETURNING
+      asset_id, project_id, asset_uid, title, asset_type,
+      media_type, original_filename, storage_backend, storage_ref,
+      canonical_uri, content_hash, size_bytes, status, ingest_state,
+      knowledge_state, current_version, sensitivity_level,
+      retention_policy, source_inbox_item_id, created_by_user_id,
+      imported_from, imported_source_id, created_at, updated_at, archived_at
+    """
+).bindparams(bindparam("asset_id", type_=PG_UUID(as_uuid=True)))
+
 # ═══════════════════════════════════════════════════════════════════
 # SQL — Project lookup (for asset_uid generation)
 # ═══════════════════════════════════════════════════════════════════
@@ -1390,6 +1406,21 @@ def advance_ingest_state(
         resolve_existing=_resolve_existing,
         on_success=_post_audit,
     )
+
+
+def set_knowledge_state(
+    db: Session,
+    *,
+    asset_id: UUID,
+    new_state: str,
+) -> None:
+    """Update the knowledge_state of an asset (lightweight, no audit/outbox)."""
+    row = db.execute(
+        _UPDATE_KNOWLEDGE_STATE,
+        {"asset_id": asset_id, "new_state": new_state},
+    ).first()
+    if row is None:
+        raise ValueError(f"Asset {asset_id} not found for knowledge_state update")
 
 
 # ═══════════════════════════════════════════════════════════════════

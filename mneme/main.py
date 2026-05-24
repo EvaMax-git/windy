@@ -18,6 +18,7 @@ from mneme.db.auth import bootstrap_owner_if_configured
 from mneme.db.base import check_database_connection
 from mneme.db.pipelines import seed_default_asset_import_pipelines
 from mneme.db.sub_library_registry import bootstrap_sub_libraries
+from mneme.api.dependencies.rate_limit import RateLimitMiddleware
 from mneme.observability.logging import AccessLogMiddleware, configure_logging
 from mneme.observability.metrics import install_metrics_endpoint, install_metrics_middleware
 from mneme.observability.health import check_database, check_redis, check_outbox_pending, DependencyStatus
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.add_middleware(StoreAccessMiddleware)
 
     app.add_middleware(AccessLogMiddleware)
+    app.add_middleware(RateLimitMiddleware, max_requests=120, window_seconds=60)
     install_exception_handlers(app)
 
     app.include_router(api_v4_router)

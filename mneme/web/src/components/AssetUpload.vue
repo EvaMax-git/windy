@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { uploadAsset } from "@/api/client";
+import { uploadAsset, uploadAndImport, getImportJobStatus } from "@/api/client";
 
 interface UploadFileItem {
   file: File;
   progress: number;
-  status: "pending" | "uploading" | "succeeded" | "failed";
+  status: "pending" | "uploading" | "parsing" | "succeeded" | "failed" | "timeout";
   error?: string;
   assetId?: string;
+  jobId?: string;
+  parseResult?: { block_count?: number; chunk_count?: number };
 }
 
 const props = defineProps<{
@@ -138,15 +140,36 @@ async function uploadAll() {
     item.progress = 0;
 
     try {
-      const asset = await uploadAsset(item.file, props.projectId, {
-        onProgress: (percent) => {
-          item.progress = percent;
-        },
-      });
-      item.status = "succeeded";
-      item.progress = 100;
-      item.assetId = asset.asset_id;
-      results.push({ file: item.file, assetId: asset.asset_id, success: true });
+      const ext = "." + item.file.name.split(".").pop()?.toLowerCase();
+      const isDocx = ext === ".docx";
+
+      if (isDocx) {
+        // Use /import endpoint to trigger auto-parse pipeline
+        const result = await uploadAndImport(item.file, {
+          projectId: props.projectId,
+          onProgress: (percent) => {
+            item.progress = percent;
+          },
+        });
+        item.status = "parsing";
+        item.progress = 100;
+        item.jobId = result.job_id;
+        item.assetId = result.asset_uid;
+
+        // Poll job status until done/failed
+        pollJobStatus(item);
+        results.push({ file: item.file, assetId: result.asset_uid || "", success: true });
+      } else {
+        const asset = await uploadAsset(item.file, props.projectId, {
+          onProgress: (percent) => {
+            item.progress = percent;
+          },
+        });
+        item.status = "succeeded";
+        item.progress = 100;
+        item.assetId = asset.asset_id;
+        results.push({ file: item.file, assetId: asset.asset_id, success: true });
+      }
     } catch (err) {
       item.status = "failed";
       item.error = err instanceof Error ? err.message : "上传失败";
@@ -161,6 +184,32 @@ async function uploadAll() {
   emit("upload-complete", results);
 }
 
+async function pollJobStatus(item: UploadFileItem) {
+  if (!item.jobId) return;
+  const maxAttempts = 60;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const status = await getImportJobStatus(item.jobId);
+      if (status.status === "done") {
+        item.status = "succeeded";
+        item.parseResult = { block_count: (status as any).block_count, chunk_count: (status as any).chunk_count };
+        return;
+      }
+      if (status.status === "failed") {
+        item.status = "failed";
+        item.error = status.error || "解析失败";
+        return;
+      }
+    } catch {
+      // ignore polling errors, keep trying
+    }
+  }
+  // Timeout — parsing took too long
+  item.status = "timeout";
+  item.error = "解析超时，文件可能仍在处理中";
+}
+
 function getStatusIcon(status: string): string {
   switch (status) {
     case "succeeded":
@@ -168,6 +217,7 @@ function getStatusIcon(status: string): string {
     case "failed":
       return `<svg class="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`;
     case "uploading":
+    case "parsing":
       return `<svg class="h-4 w-4 animate-spin text-brand-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>`;
     default:
       return `<svg class="h-4 w-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>`;
@@ -282,16 +332,23 @@ function getStatusIcon(status: string): string {
 
             <!-- Error message -->
             <p v-if="item.error" class="mt-1 text-xs text-red-500">{{ item.error }}</p>
+            <!-- Parsing status -->
+            <p v-if="item.status === 'parsing'" class="mt-1 text-xs text-brand-600">
+              正在解析文档...
+            </p>
             <!-- Success check -->
             <p v-if="item.status === 'succeeded'" class="mt-1 text-xs text-emerald-600">
-              上传成功
+              {{ item.parseResult ? '解析完成' : '上传成功' }}
+              <span v-if="item.parseResult?.chunk_count" class="font-mono">
+                · {{ item.parseResult.chunk_count }} 个分块
+              </span>
               <span v-if="item.assetId" class="font-mono">· {{ item.assetId.slice(0, 8) }}...</span>
             </p>
           </div>
 
           <!-- Remove button -->
           <button
-            v-if="item.status !== 'uploading'"
+            v-if="item.status !== 'uploading' && item.status !== 'parsing'"
             class="shrink-0 rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 transition-colors"
             @click="removeFile(idx)"
           >
@@ -322,7 +379,7 @@ function getStatusIcon(status: string): string {
           </button>
           <button
             class="btn btn-primary btn-sm"
-            :disabled="isUploading || disabled || !files.some(f => f.status === 'pending')"
+            :disabled="isUploading || disabled || !files.some(f => f.status === 'pending') || files.some(f => f.status === 'parsing')"
             @click="uploadAll"
           >
             <svg

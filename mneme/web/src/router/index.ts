@@ -90,6 +90,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "Agent 中心", icon: "bot", requiresAuth: true },
   },
   {
+    path: "/app/chat",
+    name: "chat",
+    component: () => import("@/pages/ChatPage.vue"),
+    meta: { title: "知识问答", icon: "chat", requiresAuth: true },
+  },
+  {
     path: "/app/gateway",
     name: "gateway",
     component: () => import("@/pages/GatewayPage.vue"),

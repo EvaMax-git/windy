@@ -9,6 +9,7 @@ from mneme.api.routes.agent.agent_context import router as agent_context_router
 from mneme.api.routes.agent.agents import router as agents_router
 from mneme.api.routes.agent.context import router as context_router
 from mneme.api.routes.agent.context_assembly import router as context_assembly_router
+from mneme.api.routes.agent.chat import router as chat_router
 from mneme.api.routes.agent.conversations import router as conversations_router
 from mneme.api.routes.agent.messages import router as messages_router
 
@@ -23,6 +24,7 @@ from mneme.api.routes.knowledge.knowledge import router as knowledge_router
 from mneme.api.routes.knowledge.knowledge_search import router as knowledge_search_router
 from mneme.api.routes.knowledge.knowledge_stores import router as knowledge_stores_router
 from mneme.api.routes.knowledge.source_map import router as source_map_router
+from mneme.api.routes.knowledge.ask import router as ask_router
 from mneme.api.routes.knowledge_v2 import router as knowledge_v2_router
 from mneme.api.routes.import_v2 import router as import_v2_router
 from mneme.api.routes.original_pool import router as original_pool_router
@@ -95,6 +97,7 @@ for _router in (
 api_v4_router = APIRouter(prefix="/api/v4")
 
 # ── Agent ──
+api_v4_router.include_router(chat_router)
 api_v4_router.include_router(agent_cards_router)
 api_v4_router.include_router(agent_context_router)
 api_v4_router.include_router(agents_router)
@@ -113,6 +116,7 @@ api_v4_router.include_router(knowledge_router)
 api_v4_router.include_router(knowledge_search_router)
 api_v4_router.include_router(knowledge_stores_router)
 api_v4_router.include_router(source_map_router)
+api_v4_router.include_router(ask_router)
 api_v4_router.include_router(knowledge_v2_router)
 api_v4_router.include_router(import_v2_router)
 api_v4_router.include_router(original_pool_router)

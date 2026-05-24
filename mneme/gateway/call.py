@@ -521,6 +521,11 @@ class Gateway:
 
                 # Parse tokens from response
                 resp_data = http_resp.json() if http_resp.content else {}
+
+                # Normalize Anthropic response to OpenAI-compatible format
+                if "content" in resp_data and "choices" not in resp_data:
+                    resp_data = self._normalize_anthropic_response(resp_data)
+
                 usage = resp_data.get("usage", {}) if isinstance(resp_data, dict) else {}
                 input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
                 output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
@@ -711,36 +716,44 @@ class Gateway:
     ) -> tuple[str, dict[str, str], dict[str, Any]]:
         """Build the HTTP request (URL, headers, body) for the provider call.
 
-        Subclasses or future phases can override this to support different
-        provider API formats (OpenAI-compatible, Anthropic, etc.).
+        Supports two API formats:
+        - OpenAI-compatible (default)
+        - Anthropic-compatible (detected by endpoint containing 'anthropic')
         """
+        is_anthropic = "anthropic" in endpoint_base.lower()
+
         headers: dict[str, str] = {"Content-Type": "application/json"}
 
-        # Add credential as Bearer token if available
+        # Add credential
         if plaintext_credential is not None:
             credential_str = plaintext_credential.decode("utf-8").strip()
-            # Detect if credential is already "Bearer xxx" or just raw key
-            if credential_str.lower().startswith("bearer "):
-                headers["Authorization"] = credential_str
-            elif credential_str.startswith("sk-") or credential_str.startswith("api-"):
-                headers["Authorization"] = f"Bearer {credential_str}"
-            elif len(credential_str) > 20:
-                headers["Authorization"] = f"Bearer {credential_str}"
+            if is_anthropic:
+                # Anthropic uses x-api-key header
+                headers["x-api-key"] = credential_str
+                headers["anthropic-version"] = "2023-06-01"
             else:
-                # Short credential — might be a different auth scheme
-                headers["X-API-Key"] = credential_str
+                if credential_str.lower().startswith("bearer "):
+                    headers["Authorization"] = credential_str
+                elif credential_str.startswith("sk-") or credential_str.startswith("api-"):
+                    headers["Authorization"] = f"Bearer {credential_str}"
+                elif len(credential_str) > 20:
+                    headers["Authorization"] = f"Bearer {credential_str}"
+                else:
+                    headers["X-API-Key"] = credential_str
 
-        # Build URL path based on capability
-        url = self._resolve_url(
-            endpoint_base=endpoint_base,
-            model_code=model_code,
-            capability_code=capability_code,
-        )
+        # Build URL
+        if is_anthropic:
+            url = self._resolve_url_anthropic(endpoint_base, capability_code)
+        else:
+            url = self._resolve_url(endpoint_base, model_code, capability_code)
 
-        # Build body — pass through params, inject model if not present
-        body = dict(params)
-        if "model" not in body and model_code:
-            body["model"] = model_code
+        # Build body
+        if is_anthropic:
+            body = self._build_body_anthropic(params, model_code)
+        else:
+            body = dict(params)
+            if "model" not in body and model_code:
+                body["model"] = model_code
 
         # Provider-specific headers from binding config
         model_config = binding.get("model_config_json") or {}
@@ -748,6 +761,95 @@ class Gateway:
             headers["OpenAI-Beta"] = f"assistants={model_config['api_version']}"
 
         return url, headers, body
+
+    @staticmethod
+    def _resolve_url_anthropic(endpoint_base: str, capability_code: str) -> str:
+        """Construct Anthropic-compatible endpoint URL."""
+        base = endpoint_base.rstrip("/")
+        capability_paths: dict[str, str] = {
+            "chat.completion": "/v1/messages",
+            "chat.completion.streaming": "/v1/messages",
+        }
+        path = capability_paths.get(capability_code, "/v1/messages")
+        return f"{base}{path}"
+
+    @staticmethod
+    def _build_body_anthropic(params: dict[str, Any], model_code: str) -> dict[str, Any]:
+        """Convert OpenAI-style params to Anthropic Messages API format."""
+        body: dict[str, Any] = {}
+        body["model"] = params.get("model", model_code)
+        body["max_tokens"] = params.get("max_tokens", 4096)
+
+        if "temperature" in params:
+            body["temperature"] = params["temperature"]
+
+        # Extract system message and user/assistant messages
+        messages = params.get("messages", [])
+        system_parts = []
+        chat_messages = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_parts.append(content)
+            else:
+                chat_messages.append({"role": role, "content": content})
+
+        if system_parts:
+            body["system"] = "\n\n".join(system_parts)
+
+        # Ensure messages start with user
+        if chat_messages and chat_messages[0].get("role") != "user":
+            chat_messages.insert(0, {"role": "user", "content": "..."})
+
+        body["messages"] = chat_messages or [{"role": "user", "content": "..."}]
+
+        return body
+
+    @staticmethod
+    def _normalize_anthropic_response(resp_data: dict[str, Any]) -> dict[str, Any]:
+        """Convert Anthropic Messages API response to OpenAI-compatible format.
+
+        Anthropic format:
+            {"content": [{"type": "text", "text": "..."}], "usage": {...}}
+        OpenAI format:
+            {"choices": [{"message": {"content": "..."}}], "usage": {...}}
+        """
+        content_blocks = resp_data.get("content", [])
+        text_parts = []
+        for block in content_blocks:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                text_parts.append(block)
+        answer_text = "\n".join(text_parts)
+
+        # Map Anthropic usage to OpenAI usage format
+        anthropic_usage = resp_data.get("usage", {})
+        usage = {
+            "input_tokens": anthropic_usage.get("input_tokens"),
+            "output_tokens": anthropic_usage.get("output_tokens"),
+            "total_tokens": (anthropic_usage.get("input_tokens", 0) or 0)
+                           + (anthropic_usage.get("output_tokens", 0) or 0),
+            "prompt_tokens": anthropic_usage.get("input_tokens"),
+            "completion_tokens": anthropic_usage.get("output_tokens"),
+        }
+
+        return {
+            "id": resp_data.get("id", ""),
+            "model": resp_data.get("model", ""),
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": answer_text,
+                    },
+                    "finish_reason": resp_data.get("stop_reason", "end_turn"),
+                }
+            ],
+            "usage": usage,
+        }
 
     @staticmethod
     def _resolve_url(

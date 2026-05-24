@@ -184,6 +184,12 @@ class VaultEncryption:
             If decryption fails (wrong KEK, tampered data, or corrupted storage).
         """
         try:
+            # Ensure bytes (PostgreSQL returns memoryview)
+            if not isinstance(ciphertext, bytes):
+                ciphertext = bytes(ciphertext)
+            if not isinstance(key_wrap, bytes):
+                key_wrap = bytes(key_wrap)
+
             # 1. Unwrap DEK with KEK
             wrapped = _EncryptedData.from_combined(key_wrap)
             dek = self._decrypt_with_key(key=self._kek, encrypted=wrapped)

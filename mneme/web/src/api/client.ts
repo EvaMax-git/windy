@@ -733,6 +733,104 @@ export async function uploadAsset(
   });
 }
 
+/** Upload a file via /import endpoint to trigger auto-parse pipeline (A1 MVP). */
+export async function uploadAndImport(
+  file: File,
+  options?: {
+    projectId?: string;
+    pipelineKey?: string;
+    onProgress?: (percent: number) => void;
+  },
+): Promise<{ job_id: string; asset_uid?: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("pipeline_key", options?.pipelineKey || "standard_chunk");
+  if (options?.projectId) formData.append("project_id", options.projectId);
+
+  const requestId = generateRequestId();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE_URL}/import`);
+    xhr.setRequestHeader("X-Request-Id", requestId);
+    xhr.setRequestHeader("Idempotency-Key", generateRequestId());
+    xhr.withCredentials = true;
+
+    if (options?.onProgress) {
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          options.onProgress!(Math.round((e.loaded / e.total) * 100));
+        }
+      });
+    }
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const resp = JSON.parse(xhr.responseText);
+        resolve(resp.data);
+      } else {
+        let message = `导入失败 (${xhr.status})`;
+        try {
+          const err = JSON.parse(xhr.responseText);
+          message = err.message || err.detail || message;
+        } catch {}
+        reject(new Error(message));
+      }
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("网络连接失败")));
+    xhr.addEventListener("abort", () => reject(new Error("上传已取消")));
+
+    xhr.send(formData);
+  });
+}
+
+/** Poll import job status. */
+export async function getImportJobStatus(
+  jobId: string,
+): Promise<{ status: string; progress?: number; error?: string }> {
+  return apiData(`/import/${jobId}/status`);
+}
+
+/** Ask a question (A3 MVP). */
+export async function askQuestion(params: {
+  question: string;
+  project_id?: string;
+  max_citations?: number;
+  sensitivity_floor?: string;
+}): Promise<{
+  answer: string;
+  citations: Array<{ chunk_id: string; document_title: string; snippet: string; rank: number }>;
+  model: string | null;
+  degraded: boolean;
+  degradation_reason: string | null;
+}> {
+  return apiData("/ask", {
+    method: "POST",
+    body: params,
+  });
+}
+
+/** Multi-turn chat (A4 MVP). */
+export async function chat(params: {
+  message: string;
+  conversation_id?: string;
+  project_id?: string;
+  max_context_chunks?: number;
+}): Promise<{
+  conversation_id: string;
+  message_id: string;
+  answer: string;
+  citations: Array<{ chunk_id: string; document_title: string; snippet: string }>;
+  model: string | null;
+  degraded: boolean;
+}> {
+  return apiData("/chat", {
+    method: "POST",
+    body: params,
+  });
+}
+
 export async function fetchAssetMetadata(assetId: string): Promise<AssetMetadata[]> {
   return apiData<AssetMetadata[]>(`/assets/${assetId}/metadata`);
 }

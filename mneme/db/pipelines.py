@@ -713,7 +713,7 @@ def asset_import_orchestrator(
     Returns:
         A summary dict with step results.
     """
-    from mneme.db.assets import get_asset, advance_ingest_state
+    from mneme.db.assets import get_asset, advance_ingest_state, set_knowledge_state
     from mneme.db.asset_metadata import add_metadata
     from mneme.schemas.asset_metadata import AssetMetadataCreateRequest, MetadataValueType
 
@@ -783,15 +783,20 @@ def asset_import_orchestrator(
                 )
     step_results.append({"step_code": "write_metadata", "result": "passed", "metadata_count": metadata_count})
 
-    # Step 4: Advance ingest_state staged → importing
-    _step_log(db, pipeline_run_id, 1, "update_ingest_state", "Advancing ingest_state: staged → importing", "info")
-    advance_ingest_state(
-        db, context,
-        asset_id=asset_id,
-        new_ingest_state="importing",
-        expected_ingest_state="staged",
-    )
-    step_results.append({"step_code": "update_ingest_state", "result": "passed", "ingest_state": "importing"})
+    # Step 4: Advance ingest_state staged → importing (skip if already ready)
+    current_ingest = asset.ingest_state.value if hasattr(asset.ingest_state, 'value') else str(asset.ingest_state)
+    if current_ingest == "ready":
+        _step_log(db, pipeline_run_id, 1, "update_ingest_state", f"Asset already in 'ready' state, skipping transition", "info")
+        step_results.append({"step_code": "update_ingest_state", "result": "skipped", "ingest_state": "ready"})
+    else:
+        _step_log(db, pipeline_run_id, 1, "update_ingest_state", "Advancing ingest_state: staged → importing", "info")
+        advance_ingest_state(
+            db, context,
+            asset_id=asset_id,
+            new_ingest_state="importing",
+            expected_ingest_state="staged",
+        )
+        step_results.append({"step_code": "update_ingest_state", "result": "passed", "ingest_state": "importing"})
 
     # Step 5: Create knowledge document from asset file
     _step_log(db, pipeline_run_id, 1, "create_document", "Creating knowledge document from asset", "info")
@@ -810,58 +815,113 @@ def asset_import_orchestrator(
             storage_path = _Path(asset.storage_ref)
             if backend.file_exists(storage_path):
                 content_bytes = backend.read_file(storage_path)
-                # Try common encodings to avoid replacing Chinese chars with �
-                text = None
-                for enc in ("utf-8", "gb18030", "gbk", "utf-16", "latin-1"):
+
+                # ── MIME-aware parsing (A1: Word 文档入库 MVP) ──────────
+                from mneme.parsers import get_parser
+
+                media_type = asset.media_type or ""
+                parser = get_parser(media_type)
+                parsed_blocks = None
+
+                if parser is not None:
                     try:
-                        text = content_bytes.decode(enc)
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-                if text is None:
-                    text = content_bytes.decode("utf-8", errors="replace")
+                        parsed_blocks = parser(content_bytes)
+                    except Exception as parse_exc:
+                        _step_log(
+                            db, pipeline_run_id, 1, "create_document",
+                            f"Parser failed for media_type={media_type}: {parse_exc}, falling back to text decode",
+                            "warning",
+                        )
+                        parsed_blocks = None
 
-                if text.strip():
-                    doc_payload = KnowledgeDocumentCreate(
-                        project_id=asset.project_id,
-                        title=asset.title or asset.original_filename or "未命名文档",
-                        source_asset_id=asset_id,
-                    )
-                    doc_ctx = RequestContext(
-                        request_id=context.request_id,
-                        correlation_id=context.correlation_id,
-                        actor=context.actor,
-                        idempotency_key=f"{context.idempotency_key}-doc-{uuid4().hex[:8]}",
-                    )
-                    doc = create_document(db, doc_ctx, payload=doc_payload)
+                doc_payload = KnowledgeDocumentCreate(
+                    project_id=asset.project_id,
+                    title=asset.title or asset.original_filename or "未命名文档",
+                    source_asset_id=asset_id,
+                )
+                doc_ctx = RequestContext(
+                    request_id=context.request_id,
+                    correlation_id=context.correlation_id,
+                    actor=context.actor,
+                    idempotency_key=f"{context.idempotency_key}-doc-{uuid4().hex[:8]}",
+                )
+                doc = create_document(db, doc_ctx, payload=doc_payload)
 
-                    # Limit text size for chunking
-                    max_len = 1_000_000
-                    if len(text) > max_len:
-                        text = text[:max_len]
+                blocks_for_chunking = []
 
-                    block_payload = KnowledgeBlockCreate(
-                        block_order=0,
-                        block_type=BlockType.paragraph,
-                        content_markdown=text,
+                if parsed_blocks:
+                    # ── Structured blocks from parser ────────────────────
+                    _step_log(
+                        db, pipeline_run_id, 1, "create_document",
+                        f"Parser extracted {len(parsed_blocks)} blocks from {media_type}",
+                        "info",
                     )
-                    block_ctx = RequestContext(
-                        request_id=context.request_id,
-                        correlation_id=context.correlation_id,
-                        actor=context.actor,
-                        idempotency_key=f"{context.idempotency_key}-block-{uuid4().hex[:8]}",
-                    )
-                    block = add_block(db, block_ctx, document_id=doc.document_id, payload=block_payload)
+                    for draft in parsed_blocks:
+                        bt = BlockType.paragraph
+                        if draft.block_type == "heading":
+                            bt = BlockType.title
+                        elif draft.block_type == "table":
+                            bt = BlockType.table
 
-                    blocks = [{
-                        "block_id": block.block_id,
-                        "content_markdown": text,
-                        "block_order": 0,
-                    }]
+                        block_payload = KnowledgeBlockCreate(
+                            block_order=draft.block_order,
+                            block_type=bt,
+                            content_markdown=draft.content_markdown,
+                        )
+                        block_ctx = RequestContext(
+                            request_id=context.request_id,
+                            correlation_id=context.correlation_id,
+                            actor=context.actor,
+                            idempotency_key=f"{context.idempotency_key}-block-{uuid4().hex[:8]}",
+                        )
+                        block = add_block(db, block_ctx, document_id=doc.document_id, payload=block_payload)
+                        blocks_for_chunking.append({
+                            "block_id": block.block_id,
+                            "content_markdown": draft.content_markdown,
+                            "block_order": draft.block_order,
+                        })
+                else:
+                    # ── Fallback: plain text decode ─────────────────────
+                    text = None
+                    for enc in ("utf-8", "gb18030", "gbk", "utf-16", "latin-1"):
+                        try:
+                            text = content_bytes.decode(enc)
+                            break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                    if text is None:
+                        text = content_bytes.decode("utf-8", errors="replace")
+
+                    if text.strip():
+                        # Limit text size for chunking
+                        max_len = 1_000_000
+                        if len(text) > max_len:
+                            text = text[:max_len]
+
+                        block_payload = KnowledgeBlockCreate(
+                            block_order=0,
+                            block_type=BlockType.paragraph,
+                            content_markdown=text,
+                        )
+                        block_ctx = RequestContext(
+                            request_id=context.request_id,
+                            correlation_id=context.correlation_id,
+                            actor=context.actor,
+                            idempotency_key=f"{context.idempotency_key}-block-{uuid4().hex[:8]}",
+                        )
+                        block = add_block(db, block_ctx, document_id=doc.document_id, payload=block_payload)
+                        blocks_for_chunking.append({
+                            "block_id": block.block_id,
+                            "content_markdown": text,
+                            "block_order": 0,
+                        })
+
+                if blocks_for_chunking:
+                    # Chunk all blocks (structured from parser or plain text fallback)
                     result = chunk_document(
                         document_id=doc.document_id,
                         document_version=doc.current_version,
-                        blocks=blocks,
+                        blocks=blocks_for_chunking,
                     )
 
                     if result.chunks:
@@ -885,6 +945,7 @@ def asset_import_orchestrator(
                         )
 
                     _mark_fts_ready(db, doc.document_id)
+                    set_knowledge_state(db, asset_id=asset_id, new_state="ready")
                     doc_created = True
                     step_results.append({
                         "step_code": "create_document", "result": "passed",
@@ -892,15 +953,19 @@ def asset_import_orchestrator(
                         "chunk_count": len(result.chunks),
                     })
 
-                    # Step 5b: Advance ingest_state importing → ready
-                    _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Advancing ingest_state: importing → ready", "info")
-                    advance_ingest_state(
-                        db, context,
-                        asset_id=asset_id,
-                        new_ingest_state="ready",
-                        expected_ingest_state="importing",
-                    )
-                    step_results.append({"step_code": "finalize_ingest", "result": "passed", "ingest_state": "ready"})
+                    # Step 5b: Advance ingest_state importing → ready (skip if already ready)
+                    if current_ingest == "ready":
+                        _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Already in 'ready', skipping finalize", "info")
+                        step_results.append({"step_code": "finalize_ingest", "result": "skipped", "ingest_state": "ready"})
+                    else:
+                        _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Advancing ingest_state: importing → ready", "info")
+                        advance_ingest_state(
+                            db, context,
+                            asset_id=asset_id,
+                            new_ingest_state="ready",
+                            expected_ingest_state="importing",
+                        )
+                        step_results.append({"step_code": "finalize_ingest", "result": "passed", "ingest_state": "ready"})
     except Exception as exc:
         _step_log(db, pipeline_run_id, 1, "create_document",
                   f"Document creation skipped (non-fatal): {exc}", "warning")
@@ -910,15 +975,19 @@ def asset_import_orchestrator(
             "step_code": "create_document", "result": "skipped",
             "note": "File not text-decodable or missing storage_ref",
         })
-        # Still finalize ingest state even if no document was created
-        _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Advancing ingest_state: importing → ready (no document)", "info")
-        advance_ingest_state(
-            db, context,
-            asset_id=asset_id,
-            new_ingest_state="ready",
-            expected_ingest_state="importing",
-        )
-        step_results.append({"step_code": "finalize_ingest", "result": "passed", "ingest_state": "ready"})
+        # Still finalize ingest state even if no document was created (skip if already ready)
+        if current_ingest == "ready":
+            _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Already in 'ready', skipping finalize", "info")
+            step_results.append({"step_code": "finalize_ingest", "result": "skipped", "ingest_state": "ready"})
+        else:
+            _step_log(db, pipeline_run_id, 1, "finalize_ingest", "Advancing ingest_state: importing → ready (no document)", "info")
+            advance_ingest_state(
+                db, context,
+                asset_id=asset_id,
+                new_ingest_state="ready",
+                expected_ingest_state="importing",
+            )
+            step_results.append({"step_code": "finalize_ingest", "result": "passed", "ingest_state": "ready"})
 
     summary = {
         "asset_id": str(asset_id),
