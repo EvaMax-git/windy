@@ -2,7 +2,7 @@
 
 import pytest
 
-from mneme.security.file_encrypt import decrypt_file, encrypt_file, generate_key
+from mneme.security.file_encrypt import decrypt_file, encrypt_file, generate_key, is_encrypted
 
 
 class TestGenerateKey:
@@ -78,3 +78,38 @@ class TestEncryptDecrypt:
         tampered = encrypted[:-1] + bytes([encrypted[-1] ^ 0xFF])
         with pytest.raises(ValueError, match="解密失败"):
             decrypt_file(tampered, key)
+
+
+class TestMagicHeader:
+    """A-21: Magic header for encryption detection."""
+
+    def test_encrypted_has_magic(self):
+        """Encrypted file starts with MNME magic bytes."""
+        key = generate_key()
+        encrypted = encrypt_file(b"test content", key)
+        assert encrypted[:4] == b"MNME"
+
+    def test_is_encrypted_true(self):
+        """is_encrypted returns True for encrypted content."""
+        key = generate_key()
+        encrypted = encrypt_file(b"test", key)
+        assert is_encrypted(encrypted) is True
+
+    def test_is_encrypted_false_plain(self):
+        """is_encrypted returns False for plain text."""
+        assert is_encrypted(b"plain text") is False
+
+    def test_is_encrypted_false_empty(self):
+        """is_encrypted returns False for empty content."""
+        assert is_encrypted(b"") is False
+
+    def test_is_encrypted_false_short(self):
+        """is_encrypted returns False for short content that starts with MNME."""
+        assert is_encrypted(b"MNME") is False
+
+    def test_decrypt_with_magic_roundtrip(self):
+        """Full roundtrip with magic header."""
+        key = generate_key()
+        original = "Hello 世界".encode("utf-8")
+        encrypted = encrypt_file(original, key)
+        assert decrypt_file(encrypted, key) == original
