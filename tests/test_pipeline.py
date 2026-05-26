@@ -82,3 +82,18 @@ class TestProcessFileMarkdown:
         result = process_file("test.md", content)
         assert result["file_type"] == "text/markdown"
         assert len(result["chunks"]) >= 1
+
+
+class TestLargeFile:
+    """A-16: Large file handling — pipeline should not crash or OOM."""
+
+    def test_large_txt_processes_successfully(self):
+        """~1MB text file should process without issues."""
+        paragraph = "这是一段测试文本，用于验证大文件处理能力。包含中文和English混合内容。\n\n"
+        # ~1MB of text
+        big_text = paragraph * 20000
+        content = big_text.encode("utf-8")
+        result = process_file("big.txt", content)
+        assert len(result["chunks"]) > 0
+        assert result["size"] == len(content)
+        assert result["word_count"] > 0
