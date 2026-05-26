@@ -170,11 +170,11 @@ def test_get_parser_for_docx_mime():
 
 def test_get_parser_for_unknown_mime():
     """get_parser 应该为未知 MIME 类型返回 None。"""
-    parser = get_parser("application/pdf")
+    parser = get_parser("application/zip")
     assert parser is None
 
 
 def test_get_parser_for_text_mime():
-    """纯文本不需要解析器。"""
+    """纯文本现在有解析器。"""
     parser = get_parser("text/plain")
-    assert parser is None
+    assert parser is not None
