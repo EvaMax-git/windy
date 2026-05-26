@@ -74,3 +74,11 @@ class TestCleanHeadersFooters:
         result = clean_text(text)
         assert "Page 5" not in result
         assert "正文内容" in result
+
+    def test_footer_removal_merges_blank_lines(self):
+        """Removing a footer line must not leave 3+ consecutive newlines."""
+        text = "内容A\nPage 1\n\n内容B"
+        result = clean_text(text)
+        assert "\n\n\n" not in result
+        assert "内容A" in result
+        assert "内容B" in result

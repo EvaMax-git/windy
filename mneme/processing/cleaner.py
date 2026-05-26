@@ -43,7 +43,10 @@ def clean_text(text: str) -> str:
     text = _RE_PAGE_DASH.sub("", text)
     text = _RE_PAGE_EN.sub("", text)
 
-    # 5. Final strip
+    # 5. Re-merge empty lines created by footer removal
+    text = _RE_MULTI_NEWLINE.sub("\n\n", text)
+
+    # 6. Final strip
     text = text.strip()
 
     return text
