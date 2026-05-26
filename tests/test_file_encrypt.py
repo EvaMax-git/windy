@@ -60,3 +60,21 @@ class TestEncryptDecrypt:
         key = generate_key()
         with pytest.raises(ValueError, match="content must not be empty"):
             encrypt_file(b"", key)
+
+    def test_same_plaintext_different_ciphertext(self):
+        """Encrypting same plaintext twice must produce different ciphertext (random nonce)."""
+        content = b"Hello, Mneme!"
+        key = generate_key()
+        enc1 = encrypt_file(content, key)
+        enc2 = encrypt_file(content, key)
+        assert enc1 != enc2  # different nonces
+
+    def test_tampered_ciphertext_fails(self):
+        """Flipping a bit in ciphertext must cause decryption to fail (GCM integrity)."""
+        content = b"Hello, Mneme!"
+        key = generate_key()
+        encrypted = encrypt_file(content, key)
+        # Flip last byte
+        tampered = encrypted[:-1] + bytes([encrypted[-1] ^ 0xFF])
+        with pytest.raises(ValueError, match="解密失败"):
+            decrypt_file(tampered, key)

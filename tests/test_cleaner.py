@@ -45,6 +45,11 @@ class TestCleanGarbled:
         text = "a\nb\tc"
         assert clean_text(text) == "a\nb\tc"
 
+    def test_preserve_cjk_punctuation(self):
+        """CJK punctuation like ，。、；： must survive cleaning."""
+        text = "你好，世界。测试；内容：结束"
+        assert clean_text(text) == text
+
 
 class TestCleanHeadersFooters:
     """A-12: Remove page header/footer patterns."""

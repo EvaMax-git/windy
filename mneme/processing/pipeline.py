@@ -23,7 +23,7 @@ def process_file(
         overlap: Overlap between chunks (default 50).
 
     Returns:
-        dict with keys: chunks, word_count, file_type, filename, size.
+        dict with keys: chunks, char_count, file_type, filename, size.
 
     Raises:
         ValueError: Unsupported file type.
@@ -51,7 +51,7 @@ def process_file(
     if not full_text.strip():
         return {
             "chunks": [],
-            "word_count": 0,
+            "char_count": 0,
             "file_type": mime_type,
             "filename": filename,
             "size": len(content),
@@ -65,12 +65,12 @@ def process_file(
     )
     chunks = [c["chunk_text"] for c in chunk_results]
 
-    # 6. Word count (character count for Chinese)
-    word_count = sum(len(c.replace(" ", "").replace("\n", "")) for c in chunks)
+    # 6. Character count (computed from full_text to avoid overlap double-counting)
+    char_count = len(full_text.replace(" ", "").replace("\n", ""))
 
     return {
         "chunks": chunks,
-        "word_count": word_count,
+        "char_count": char_count,
         "file_type": mime_type,
         "filename": filename,
         "size": len(content),

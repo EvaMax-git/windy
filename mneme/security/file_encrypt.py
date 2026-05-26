@@ -5,6 +5,7 @@ Provides authenticated encryption for file content using AES-256-GCM.
 
 import os
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _NONCE_SIZE = 12  # 96 bits for GCM
@@ -39,5 +40,5 @@ def decrypt_file(encrypted: bytes, key: bytes) -> bytes:
     aesgcm = AESGCM(key)
     try:
         return aesgcm.decrypt(nonce, ct, associated_data=None)
-    except Exception as e:
+    except InvalidTag as e:
         raise ValueError(f"解密失败: {e}") from e

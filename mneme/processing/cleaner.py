@@ -5,7 +5,7 @@ import re
 # Control character removal: keep tab(0x09), newline(0x0a), CR(0x0d),
 # printable ASCII (0x20-0x7e), CJK unified ideographs (一-鿿),
 # and fullwidth/special forms.
-_RE_CONTROL = re.compile(r"[^\x09\x0a\x0d\x20-\x7e一-鿿　-〿＀-￯]")
+_RE_CONTROL = re.compile(r"[^\x09\x0a\x0d\x20-\x7e -⁯㐀-鿿　-〿＀-￯]")
 
 # Consolidate multiple spaces/tabs into a single space.
 _RE_MULTI_SPACE = re.compile(r"[ \t]{2,}")
