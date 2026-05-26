@@ -1,0 +1,71 @@
+"""Tests for mneme.processing.cleaner.clean_text()."""
+
+import pytest
+from mneme.processing.cleaner import clean_text
+
+
+class TestCleanWhitespace:
+    """A-09: Consolidate multiple spaces/tabs into single space."""
+
+    def test_consolidate_spaces(self):
+        assert clean_text("hello     world") == "hello world"
+
+    def test_consolidate_tabs(self):
+        assert clean_text("hello\t\t\tworld") == "hello world"
+
+    def test_preserve_single_spaces(self):
+        assert clean_text("hello world") == "hello world"
+
+
+class TestCleanEmptyLines:
+    """A-10: Merge multiple empty lines into single newline."""
+
+    def test_merge_multiple_empty_lines(self):
+        text = "line1\n\n\n\nline2"
+        assert clean_text(text) == "line1\n\nline2"
+
+    def test_preserve_single_newline(self):
+        text = "line1\nline2"
+        assert clean_text(text) == "line1\nline2"
+
+
+class TestCleanGarbled:
+    """A-11: Filter garbled/control characters."""
+
+    def test_remove_control_characters(self):
+        # \x00 and \x01 are control chars that should be removed
+        text = "hello\x00\x01world"
+        assert clean_text(text) == "helloworld"
+
+    def test_preserve_chinese(self):
+        text = "你好世界"
+        assert clean_text(text) == "你好世界"
+
+    def test_preserve_newlines_tabs(self):
+        text = "a\nb\tc"
+        assert clean_text(text) == "a\nb\tc"
+
+
+class TestCleanHeadersFooters:
+    """A-12: Remove page header/footer patterns."""
+
+    def test_remove_page_number_format1(self):
+        """第 X 页 pattern."""
+        text = "正文内容\n第 1 页\n更多内容"
+        result = clean_text(text)
+        assert "第 1 页" not in result
+        assert "正文内容" in result
+
+    def test_remove_page_number_format2(self):
+        """- X - pattern."""
+        text = "正文内容\n- 3 -\n更多内容"
+        result = clean_text(text)
+        assert "- 3 -" not in result
+        assert "正文内容" in result
+
+    def test_remove_page_number_format3(self):
+        """Page X pattern."""
+        text = "正文内容\nPage 5\n更多内容"
+        result = clean_text(text)
+        assert "Page 5" not in result
+        assert "正文内容" in result
