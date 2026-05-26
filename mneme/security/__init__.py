@@ -131,6 +131,7 @@ from mneme.security.file_encrypt import (  # noqa: E402
     generate_key,
     encrypt_file,
     decrypt_file,
+    is_encrypted,
 )
 from mneme.security.key_store import (  # noqa: E402
     save_key,
@@ -190,10 +191,11 @@ __all__ = [
     # ── Dataclasses ──
     "AuditEvent",
     "OutboxEvent",
-    # ── File Encryption (A-17~A-19) ──
+    # ── File Encryption (A-17~A-19, A-21) ──
     "generate_key",
     "encrypt_file",
     "decrypt_file",
+    "is_encrypted",
     # ── Key Storage (A-20) ──
     "save_key",
     "load_key",
