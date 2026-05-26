@@ -127,6 +127,11 @@ from mneme.security.review_router import (  # noqa: E402
     determine_review_type,
     does_action_require_review,
 )
+from mneme.security.file_encrypt import (  # noqa: E402
+    generate_key,
+    encrypt_file,
+    decrypt_file,
+)
 
 # Backward-compatible alias
 ReviewRouter = ReviewRoutingEngine
@@ -180,4 +185,8 @@ __all__ = [
     # ── Dataclasses ──
     "AuditEvent",
     "OutboxEvent",
+    # ── File Encryption (A-17~A-19) ──
+    "generate_key",
+    "encrypt_file",
+    "decrypt_file",
 ]
