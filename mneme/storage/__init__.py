@@ -12,6 +12,7 @@ Exports
 from mneme.storage.backend import LocalFileSystemBackend, StorageBackend, get_backend
 from mneme.storage.staging import stage_file, _cleanup_staging_dir, _stage_path_for
 from mneme.storage.promote import promote_file, _build_asset_path
+from mneme.storage.path_resolver import get_storage_path, check_nas_available
 from mneme.storage.upload import (
     IdempotentUploadResult,
     handle_idempotent_upload_bytes,
@@ -44,4 +45,7 @@ __all__ = [
     "validate_upload_size",
     "validate_mime_type",
     "compute_content_hash",
+    # Path Resolver
+    "get_storage_path",
+    "check_nas_available",
 ]
