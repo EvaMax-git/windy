@@ -23,11 +23,13 @@ def clean_text(text: str) -> str:
     """Clean raw extracted text.
 
     Pipeline (order matters):
+    0. Normalize line endings (CRLF/CR → LF)
     1. Remove garbled / control characters
     2. Consolidate whitespace (spaces & tabs) → single space
     3. Merge multiple empty lines → single newline (double newline)
     4. Strip page header/footer patterns
-    5. Strip leading/trailing whitespace
+    5. Re-merge empty lines created by footer removal
+    6. Strip leading/trailing whitespace
     """
     # 0. Normalize line endings: CRLF → LF, standalone CR → LF
     text = text.replace("\r\n", "\n").replace("\r", "\n")
