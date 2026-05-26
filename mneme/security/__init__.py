@@ -132,6 +132,11 @@ from mneme.security.file_encrypt import (  # noqa: E402
     encrypt_file,
     decrypt_file,
 )
+from mneme.security.key_store import (  # noqa: E402
+    save_key,
+    load_key,
+    key_path,
+)
 
 # Backward-compatible alias
 ReviewRouter = ReviewRoutingEngine
@@ -189,4 +194,8 @@ __all__ = [
     "generate_key",
     "encrypt_file",
     "decrypt_file",
+    # ── Key Storage (A-20) ──
+    "save_key",
+    "load_key",
+    "key_path",
 ]
