@@ -51,6 +51,30 @@ class TestCleanGarbled:
         assert clean_text(text) == text
 
 
+class TestCRLFNormalization:
+    """Line ending normalization: CRLF → LF, standalone CR → LF."""
+
+    def test_crlf_blank_lines_merged(self):
+        """CRLF blank lines must be merged just like LF."""
+        text = "line1\r\n\r\n\r\n\r\nline2"
+        result = clean_text(text)
+        assert "\n\n\n" not in result
+        assert "line1" in result
+        assert "line2" in result
+
+    def test_crlf_normal_lines_preserved(self):
+        text = "line1\r\nline2\r\nline3"
+        result = clean_text(text)
+        assert "\r" not in result
+        assert "line1" in result
+
+    def test_standalone_cr_converted(self):
+        text = "line1\r\r\rline2"
+        result = clean_text(text)
+        assert "\r" not in result
+        assert "\n\n\n" not in result
+
+
 class TestCleanHeadersFooters:
     """A-12: Remove page header/footer patterns."""
 

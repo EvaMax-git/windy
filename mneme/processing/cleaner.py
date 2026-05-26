@@ -29,6 +29,9 @@ def clean_text(text: str) -> str:
     4. Strip page header/footer patterns
     5. Strip leading/trailing whitespace
     """
+    # 0. Normalize line endings: CRLF → LF, standalone CR → LF
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
     # 1. Remove control / garbled characters
     text = _RE_CONTROL.sub("", text)
 
