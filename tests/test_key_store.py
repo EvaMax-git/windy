@@ -46,3 +46,9 @@ class TestSaveLoadKey:
         save_key(b"a" * 32, "test")
         save_key(b"b" * 32, "test")
         assert load_key("test") == b"b" * 32
+
+    def test_empty_name_raises(self):
+        with pytest.raises(ValueError, match="不能为空"):
+            key_path("")
+        with pytest.raises(ValueError, match="不能为空"):
+            key_path("  ")

@@ -13,6 +13,11 @@ class TestCheckNasAvailable:
         ok, msg = check_nas_available(str(tmp_path))
         assert ok is True
 
+    def test_empty_path_returns_false(self):
+        ok, msg = check_nas_available("")
+        assert ok is False
+        assert "未配置" in msg
+
 
 class TestGetStoragePath:
     def test_local_mode(self, monkeypatch):

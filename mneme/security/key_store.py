@@ -10,6 +10,8 @@ from mneme.config import get_settings
 
 def key_path(name: str = "default") -> Path:
     """Return the full path for a named key file."""
+    if not name or not name.strip():
+        raise ValueError("密钥名不能为空")
     settings = get_settings()
     return Path(settings.key_dir) / f"{name}.key"
 

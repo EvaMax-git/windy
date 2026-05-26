@@ -17,6 +17,8 @@ def check_nas_available(nas_path: str) -> tuple[bool, str]:
     Returns:
         (is_available, message)
     """
+    if not nas_path or not nas_path.strip():
+        return False, "NAS 路径未配置"
     p = Path(nas_path)
     if not p.exists():
         return False, f"NAS 路径不存在: {nas_path}"
