@@ -5,12 +5,14 @@ from __future__ import annotations
 from mneme.knowledge.chunking import ChunkingStrategy, chunk_text
 from mneme.parsers import BlockDraft, detect_mime_type, get_parser
 from mneme.processing.cleaner import clean_text
+from mneme.security.file_encrypt import decrypt_file, is_encrypted
 
 
 def process_file(
     filename: str,
     content: bytes,
     *,
+    key: bytes | None = None,
     chunk_size: int = 500,
     overlap: int = 50,
 ) -> dict:
@@ -18,7 +20,8 @@ def process_file(
 
     Args:
         filename: File name (used for MIME detection).
-        content: Raw file bytes.
+        content: Raw file bytes (may be encrypted).
+        key: Decryption key. If provided and content is encrypted, auto-decrypts.
         chunk_size: Target chunk size in characters (default 500).
         overlap: Overlap between chunks (default 50).
 
@@ -26,8 +29,12 @@ def process_file(
         dict with keys: chunks, char_count, file_type, filename, size.
 
     Raises:
-        ValueError: Unsupported file type.
+        ValueError: Unsupported file type or decryption failure.
     """
+    # 0. Auto-decrypt if encrypted and key provided
+    if key and is_encrypted(content):
+        content = decrypt_file(content, key)
+
     # 1. Detect MIME type
     mime_type = detect_mime_type(filename, content)
 

@@ -97,3 +97,34 @@ class TestLargeFile:
         assert len(result["chunks"]) > 0
         assert result["size"] == len(content)
         assert result["char_count"] > 0
+
+
+class TestEncryptedPipeline:
+    """A-22: Pipeline auto-decrypts encrypted files."""
+
+    def test_process_encrypted_file(self):
+        from mneme.security.file_encrypt import encrypt_file, generate_key
+        key = generate_key()
+        content = "这是加密测试内容。\n\n第二段内容。".encode("utf-8")
+        encrypted = encrypt_file(content, key)
+        result = process_file("encrypted.txt", encrypted, key=key)
+        assert len(result["chunks"]) >= 1
+        assert result["char_count"] > 0
+
+    def test_process_unencrypted_with_key(self):
+        """Unencrypted file with key provided should process normally."""
+        content = "未加密内容。".encode("utf-8")
+        key = b"x" * 32
+        result = process_file("plain.txt", content, key=key)
+        assert len(result["chunks"]) >= 1
+
+    def test_process_encrypted_without_key_garbled(self):
+        """Encrypted file without key produces garbled output (not decrypted)."""
+        from mneme.security.file_encrypt import encrypt_file, generate_key
+        key = generate_key()
+        content = "原始内容".encode("utf-8")
+        encrypted = encrypt_file(content, key)
+        result_without_key = process_file("encrypted.txt", encrypted)
+        result_with_key = process_file("encrypted.txt", encrypted, key=key)
+        # Without key, output is garbled (different from decrypted)
+        assert result_without_key["chunks"] != result_with_key["chunks"]
