@@ -13,6 +13,13 @@ from mneme.storage.backend import LocalFileSystemBackend, StorageBackend, get_ba
 from mneme.storage.staging import stage_file, _cleanup_staging_dir, _stage_path_for
 from mneme.storage.promote import promote_file, _build_asset_path
 from mneme.storage.path_resolver import get_storage_path, check_nas_available
+from mneme.storage.directory_structure import (
+    ensure_directory_structure,
+    resolve_path,
+    is_private_path,
+    list_directory_status,
+    DirectoryStatus,
+)
 from mneme.storage.upload import (
     IdempotentUploadResult,
     handle_idempotent_upload_bytes,
@@ -48,4 +55,10 @@ __all__ = [
     # Path Resolver
     "get_storage_path",
     "check_nas_available",
+    # Directory Structure
+    "ensure_directory_structure",
+    "resolve_path",
+    "is_private_path",
+    "list_directory_status",
+    "DirectoryStatus",
 ]

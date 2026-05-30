@@ -1,0 +1,51 @@
+# Version control
+.git
+.gitignore
+
+# Python
+.venv
+.venv312
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+mneme3.egg-info
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node.js (only dist/ is needed at runtime)
+mneme/web/node_modules
+mneme/web/src
+mneme/web/dist.zip
+mneme/web/package.json
+mneme/web/package-lock.json
+mneme/web/tsconfig*.json
+mneme/web/vite.config.ts
+mneme/web/tailwind.config.js
+mneme/web/postcss.config.js
+
+# Data & backups (not part of image)
+mneme_data
+backups
+test_docs
+
+# Tests & docs
+tests
+doc
+w1-delivery
+
+# Docker & CI
+docker-compose*.yaml
+Dockerfile
+.dockerignore
+.claude
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo

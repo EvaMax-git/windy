@@ -165,7 +165,7 @@ def create_project(
         aggregate_type=object_type,
         aggregate_id=project_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "project_code": payload.project_code,

@@ -361,7 +361,7 @@ def add_metadata(
         aggregate_type="asset",
         aggregate_id=asset_id,
         aggregate_version=existing_asset.current_version,
-        idempotency_key=meta_idem_key or "",
+        idempotency_key=meta_idem_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "asset_id": str(asset_id),
@@ -572,7 +572,7 @@ def update_metadata(
     validate_metadata_value(existing.metadata_key, new_value, new_value_type)
 
     # Derive a suffixed idempotency key to avoid collision with parent asset writes.
-    base_key = context.idempotency_key or ""
+    base_key = context.idempotency_key or str(uuid4())
     meta_idem_key = (
         f"{base_key}:metadata-update:{asset_metadata_id}"
         if base_key
@@ -592,7 +592,7 @@ def update_metadata(
         aggregate_type="asset",
         aggregate_id=asset_id,
         aggregate_version=existing_asset.current_version,
-        idempotency_key=meta_idem_key or "",
+        idempotency_key=meta_idem_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "asset_metadata_id": str(asset_metadata_id),
@@ -715,7 +715,7 @@ def delete_metadata(
         raise ValueError(f"Asset {asset_id} not found")
 
     # Derive a suffixed idempotency key to avoid collision with parent asset writes.
-    base_key = context.idempotency_key or ""
+    base_key = context.idempotency_key or str(uuid4())
     meta_idem_key = (
         f"{base_key}:metadata-delete:{asset_metadata_id}"
         if base_key
@@ -735,7 +735,7 @@ def delete_metadata(
         aggregate_type="asset",
         aggregate_id=asset_id,
         aggregate_version=existing_asset.current_version,
-        idempotency_key=meta_idem_key or "",
+        idempotency_key=meta_idem_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "asset_metadata_id": str(asset_metadata_id),

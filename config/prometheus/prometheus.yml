@@ -33,14 +33,16 @@ scrape_configs:
           component: "api"
 
   # ── Mneme Worker ────────────────────────────────────────────────────────
-  - job_name: "mneme-worker"
-    metrics_path: "/metrics"
-    scheme: http
-    static_configs:
-      - targets:
-          - "worker:8001"
-        labels:
-          component: "worker"
+  # Worker does not expose an HTTP port; metrics are collected via the API.
+  # To enable worker metrics, start a sidecar HTTP server in the worker process.
+  # - job_name: "mneme-worker"
+  #   metrics_path: "/metrics"
+  #   scheme: http
+  #   static_configs:
+  #     - targets:
+  #         - "worker:8001"
+  #       labels:
+  #         component: "worker"
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────
   - job_name: "postgres"

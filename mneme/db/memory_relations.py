@@ -185,7 +185,7 @@ def create_memory_relation(
         aggregate_type="memory_relation",
         aggregate_id=relation_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "relation_id": str(relation_id),

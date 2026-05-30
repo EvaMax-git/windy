@@ -158,7 +158,7 @@ def create_event_source(
         aggregate_type=object_type,
         aggregate_id=event_source_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "event_source_id": str(event_source_id),

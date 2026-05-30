@@ -49,9 +49,9 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """你是一个知识库助手，通过多轮对话帮助用户。
 要求：
-1. 基于知识库参考资料回答，不要编造信息
-2. 保持对话连贯性，记住之前的对话内容
-3. 如果参考资料不足，明确说明
+1. 有参考资料时，优先基于参考资料回答，并在回答中标注引用来源
+2. 没有参考资料时，用你自身的知识回答用户问题，不要拒绝回答
+3. 保持对话连贯性，记住之前的对话内容
 4. 回答简洁准确，使用中文"""
 
 
@@ -159,7 +159,11 @@ async def chat(
         )
         conv_id = conv.conversation_id
 
-    # 2. Save user message
+    # 2. Get conversation history BEFORE saving new message (avoid duplication)
+    history, _ = list_messages(db, conversation_id=conv_id, page=1, page_size=10)
+    # list_messages already returns oldest-first (ORDER BY message_time ASC)
+
+    # 3. Save user message
     user_msg = create_message(
         db, _ctx("user-msg"),
         conversation_id=conv_id,
@@ -169,10 +173,6 @@ async def chat(
             message_time=datetime.now(timezone.utc),
         ),
     )
-
-    # 3. Get conversation history (recent 10 messages)
-    history, _ = list_messages(db, conversation_id=conv_id, page=1, page_size=10)
-    history.reverse()  # oldest first
 
     # 4. Search knowledge for context
     citations: list[ChatCitation] = []
@@ -217,6 +217,9 @@ async def chat(
         if role in ("user", "assistant") and content:
             messages.append({"role": role, "content": content})
 
+    # Append current user message
+    messages.append({"role": "user", "content": payload.message})
+
     # 6. Try Gateway call
     answer_text = ""
     model_name = None
@@ -240,7 +243,7 @@ async def chat(
             actor_id=user_id,
             request_id=context.request_id,
             correlation_id=context.correlation_id,
-            idempotency_key=str(context.idempotency_key or ""),
+            idempotency_key=str(context.idempotency_key or uuid4()),
         )
 
         resp_data = result.get("data", {})

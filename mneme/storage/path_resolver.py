@@ -27,8 +27,15 @@ def check_nas_available(nas_path: str) -> tuple[bool, str]:
     return True, "NAS 可用"
 
 
-def get_storage_path(preferred: str | None = None) -> Path:
+def get_storage_path(encrypted: bool = False, preferred: str | None = None) -> str:
     """Return the resolved storage path.
+
+    Args:
+        encrypted: If True, returns path for encrypted storage (under keys subdirectory).
+        preferred: Override path (highest priority if given).
+
+    Returns:
+        Absolute storage path as string.
 
     Priority:
     1. preferred parameter (if given)
@@ -36,24 +43,33 @@ def get_storage_path(preferred: str | None = None) -> Path:
     3. Local storage_root (fallback)
     """
     if preferred:
-        return Path(preferred)
+        return str(Path(preferred).resolve())
 
     settings = get_settings()
 
+    # Determine base path
     if settings.storage_mode == "local":
-        return Path(settings.storage_root)
-
-    if settings.storage_mode == "nas":
+        base_path = Path(settings.storage_root)
+    elif settings.storage_mode == "nas":
         ok, msg = check_nas_available(settings.nas_path)
         if ok:
-            return Path(settings.nas_path)
-        raise RuntimeError(f"NAS 不可用: {msg}")
+            base_path = Path(settings.nas_path)
+        else:
+            raise RuntimeError(f"NAS 不可用: {msg}")
+    else:
+        # auto mode
+        if settings.nas_path:
+            ok, msg = check_nas_available(settings.nas_path)
+            if ok:
+                base_path = Path(settings.nas_path)
+            else:
+                logger.warning("NAS 不可用，降级到本地存储: %s", msg)
+                base_path = Path(settings.storage_root)
+        else:
+            base_path = Path(settings.storage_root)
 
-    # auto mode
-    if settings.nas_path:
-        ok, msg = check_nas_available(settings.nas_path)
-        if ok:
-            return Path(settings.nas_path)
-        logger.warning("NAS 不可用，降级到本地存储: %s", msg)
+    # Append keys subdirectory for encrypted storage
+    if encrypted:
+        base_path = base_path / "keys"
 
-    return Path(settings.storage_root)
+    return str(base_path.resolve())

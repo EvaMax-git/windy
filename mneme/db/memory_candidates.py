@@ -282,7 +282,7 @@ def submit_candidate(
         aggregate_type="memory_candidate",
         aggregate_id=candidate_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "project_id": str(payload.project_id) if payload.project_id else None,

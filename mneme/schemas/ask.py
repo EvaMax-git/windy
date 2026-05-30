@@ -15,7 +15,7 @@ class AskRequest(BaseModel):
     """Request body for POST /api/v4/ask."""
     question: str = Field(..., min_length=1, max_length=2000, description="用户问题")
     project_id: UUID | None = Field(None, description="限定项目范围")
-    max_citations: int = Field(5, ge=1, le=20, description="最大引用数")
+    max_citations: int = Field(15, ge=1, le=50, description="最大引用数")
     sensitivity_floor: SensitivityLevel | None = Field(
         None,
         description="最低敏感度",

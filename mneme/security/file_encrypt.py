@@ -27,16 +27,32 @@ def is_encrypted(content: bytes) -> bool:
     )
 
 
-def encrypt_file(content: bytes, key: bytes) -> bytes:
-    """AES-256-GCM encrypt. Returns MNME (4) + nonce (12) + ciphertext + tag (16)."""
+def encrypt_file(content: bytes, key: bytes = None) -> tuple[bytes, bytes]:
+    """AES-256-GCM encrypt.
+
+    Args:
+        content: Raw file content to encrypt.
+        key: 256-bit AES key. If None, a new key is generated.
+
+    Returns:
+        Tuple of (encrypted_data, key).
+        encrypted_data format: MNME (4) + nonce (12) + ciphertext + tag (16).
+
+    Raises:
+        ValueError: If content is empty or key is wrong size.
+    """
     if not content:
         raise ValueError("content must not be empty")
-    if len(key) != _KEY_SIZE:
+
+    if key is None:
+        key = generate_key()
+    elif len(key) != _KEY_SIZE:
         raise ValueError(f"key must be {_KEY_SIZE} bytes")
+
     nonce = os.urandom(_NONCE_SIZE)
     aesgcm = AESGCM(key)
     ct = aesgcm.encrypt(nonce, content, associated_data=None)
-    return _MAGIC + nonce + ct
+    return (_MAGIC + nonce + ct, key)
 
 
 def decrypt_file(encrypted: bytes, key: bytes) -> bytes:

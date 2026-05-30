@@ -8,6 +8,37 @@ from mneme.processing.cleaner import clean_text
 from mneme.security.file_encrypt import decrypt_file, is_encrypted
 
 
+def _count_words(text: str) -> int:
+    """Count words in text, handling CJK characters appropriately.
+
+    CJK characters are counted individually (each is a "word").
+    Non-CJK text is split by whitespace.
+    """
+    import unicodedata
+
+    count = 0
+    non_cjk_buffer: list[str] = []
+
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿":
+            if non_cjk_buffer:
+                count += len("".join(non_cjk_buffer).split())
+                non_cjk_buffer.clear()
+            count += 1
+        elif cat.startswith("L"):
+            non_cjk_buffer.append(ch)
+        else:
+            if non_cjk_buffer:
+                count += len("".join(non_cjk_buffer).split())
+                non_cjk_buffer.clear()
+
+    if non_cjk_buffer:
+        count += len("".join(non_cjk_buffer).split())
+
+    return count
+
+
 def process_file(
     filename: str,
     content: bytes,
@@ -26,7 +57,7 @@ def process_file(
         overlap: Overlap between chunks (default 50).
 
     Returns:
-        dict with keys: chunks, char_count, file_type, filename, size.
+        dict with keys: chunks, word_count, file_type, filename, size.
 
     Raises:
         ValueError: Unsupported file type or decryption failure.
@@ -58,7 +89,7 @@ def process_file(
     if not full_text.strip():
         return {
             "chunks": [],
-            "char_count": 0,
+            "word_count": 0,
             "file_type": mime_type,
             "filename": filename,
             "size": len(content),
@@ -72,12 +103,12 @@ def process_file(
     )
     chunks = [c["chunk_text"] for c in chunk_results]
 
-    # 6. Character count (computed from full_text to avoid overlap double-counting)
-    char_count = len(full_text.replace(" ", "").replace("\n", ""))
+    # 6. Word count (CJK-aware: count CJK chars individually + space-separated words)
+    word_count = _count_words(full_text)
 
     return {
         "chunks": chunks,
-        "char_count": char_count,
+        "word_count": word_count,
         "file_type": mime_type,
         "filename": filename,
         "size": len(content),

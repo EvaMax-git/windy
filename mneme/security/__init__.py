@@ -138,6 +138,12 @@ from mneme.security.key_store import (  # noqa: E402
     load_key,
     key_path,
 )
+from mneme.security.batch_encrypt import (  # noqa: E402
+    batch_encrypt,
+    batch_decrypt,
+    encrypt_directory_tree,
+    BatchResult,
+)
 
 # Backward-compatible alias
 ReviewRouter = ReviewRoutingEngine
@@ -200,4 +206,9 @@ __all__ = [
     "save_key",
     "load_key",
     "key_path",
+    # ── Batch Encryption (A-37) ──
+    "batch_encrypt",
+    "batch_decrypt",
+    "encrypt_directory_tree",
+    "BatchResult",
 ]

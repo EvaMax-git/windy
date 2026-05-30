@@ -1,7 +1,7 @@
 name: mneme3
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Mneme3 — Docker Compose (核心服务 + Observability Stack)
+# Mneme3 — Docker Compose (核心服务 + Observability Stack + Watcher)
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # 低内存部署 (RAM <= 2GB):
@@ -12,6 +12,7 @@ name: mneme3
 #   docker compose up -d                              # 启动全部服务
 #   docker compose up -d api worker                   # 仅核心服务
 #   docker compose up -d prometheus grafana            # 仅监控栈
+#   docker compose --profile watcher up -d             # 启动文件监控
 #   docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d
 #
 # 环境变量参见 .env.example
@@ -85,6 +86,15 @@ services:
       MNEME_BOOTSTRAP_OWNER_USERNAME: ${MNEME_BOOTSTRAP_OWNER_USERNAME:-owner}
       MNEME_BOOTSTRAP_OWNER_EMAIL: ${MNEME_BOOTSTRAP_OWNER_EMAIL:-owner@example.com}
       MNEME_BOOTSTRAP_OWNER_PASSWORD: ${MNEME_BOOTSTRAP_OWNER_PASSWORD:-change-me}
+      MNEME_KEY_DIR: ${MNEME_KEY_DIR:-/mneme_data/keys}
+      MNEME_NAS_PATH: ${MNEME_NAS_PATH:-}
+      MNEME_STORAGE_MODE: ${MNEME_STORAGE_MODE:-auto}
+      MNEME_SESSION_TTL_HOURS: ${MNEME_SESSION_TTL_HOURS:-24}
+      MNEME_SESSION_COOKIE_NAME: ${MNEME_SESSION_COOKIE_NAME:-mneme_session}
+      MNEME_SESSION_COOKIE_SECURE: ${MNEME_SESSION_COOKIE_SECURE:-true}
+      XIAOMI_MIMO_API_KEY: ${XIAOMI_MIMO_API_KEY:-}
+      XIAOMI_MIMO_ENDPOINT: ${XIAOMI_MIMO_ENDPOINT:-}
+      XIAOMI_MIMO_MODEL: ${XIAOMI_MIMO_MODEL:-}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -94,7 +104,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/backups
-      - ./mneme_data:/mneme_data
+      - mneme_data:/mneme_data
     command:
       - "uvicorn"
       - "mneme.main:app"
@@ -104,6 +114,12 @@ services:
       - "8000"
       - "--proxy-headers"
       - "--forwarded-allow-ips=*"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     logging: *default-logging
 
   # ── 核心: Mneme Worker ───────────────────────────────────────────────────
@@ -118,14 +134,50 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       MNEME_STORAGE_ROOT: /mneme_data
       MNEME_VAULT_KEK: ${MNEME_VAULT_KEK}
+      MNEME_KEY_DIR: ${MNEME_KEY_DIR:-/mneme_data/keys}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./mneme_data:/mneme_data
+      - mneme_data:/mneme_data
     command: ["python", "-m", "mneme.worker"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import mneme.worker; print('ok')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging: *default-logging
+
+  # ── 文件监控: Watcher (可选) ─────────────────────────────────────────────
+  watcher:
+    build: .
+    restart: unless-stopped
+    mem_limit: 256m
+    profiles: ["watcher"]
+    environment:
+      MNEME_ENV: ${MNEME_ENV:-local}
+      MNEME_LOG_LEVEL: ${MNEME_LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-mneme}:${POSTGRES_PASSWORD:-mneme_dev_password}@postgres:5432/${POSTGRES_DB:-mneme}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MNEME_STORAGE_ROOT: /mneme_data
+      MNEME_KEY_DIR: ${MNEME_KEY_DIR:-/mneme_data/keys}
+      MNEME_WATCH_DIR: ${MNEME_WATCH_DIR:-/mneme_data/watch}
+      MNEME_WATCH_INTERVAL: ${MNEME_WATCH_INTERVAL:-5}
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - mneme_data:/mneme_data
+    command: ["python", "-m", "mneme.watcher"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "from mneme.watcher import Watcher; print('ok')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     logging: *default-logging
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -151,7 +203,14 @@ services:
       - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     logging: *default-logging
 
   # ── 可视化: Grafana ───────────────────────────────────────────────────────
@@ -169,10 +228,17 @@ services:
       - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     logging: *default-logging
 
   # ── 数据库指标导出: postgres-exporter ──────────────────────────────────────
@@ -187,6 +253,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     logging: *default-logging
 
   # ── Redis 指标导出: redis-exporter ─────────────────────────────────────────
@@ -201,6 +273,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    # No healthcheck: scratch-based image has no shell
     logging: *default-logging
 
   # ── 主机指标: node-exporter ────────────────────────────────────────────────
@@ -217,6 +290,12 @@ services:
       - "9100:9100"
     volumes:
       - /:/host:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     logging: *default-logging
 
   # ── 容器指标: cAdvisor ─────────────────────────────────────────────────────
@@ -233,6 +312,12 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     privileged: true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     logging: *default-logging
 
 volumes:

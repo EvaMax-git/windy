@@ -11,7 +11,7 @@ class TestProcessFileBasic:
         content = "这是第一段内容，用于测试。\n\n这是第二段内容，也需要测试。\n\n这是第三段。".encode("utf-8")
         result = process_file("test.txt", content)
         assert "chunks" in result
-        assert "char_count" in result
+        assert "word_count" in result
         assert "file_type" in result
         assert "filename" in result
         assert "size" in result
@@ -31,10 +31,10 @@ class TestProcessFileBasic:
         result = process_file("test.txt", content)
         assert result["size"] == len(content)
 
-    def test_char_count_positive(self):
+    def test_word_count_positive(self):
         content = "这是一段有足够内容的测试文本，用于验证字数统计功能。".encode("utf-8")
         result = process_file("test.txt", content)
-        assert result["char_count"] > 0
+        assert result["word_count"] > 0
 
     def test_chunks_are_strings(self):
         content = ("段落一。" * 50 + "\n\n" + "段落二。" * 50).encode("utf-8")
@@ -71,7 +71,7 @@ class TestProcessFileErrors:
         content = "".encode("utf-8")
         result = process_file("empty.txt", content)
         assert result["chunks"] == []
-        assert result["char_count"] == 0
+        assert result["word_count"] == 0
 
 
 class TestProcessFileMarkdown:
@@ -96,7 +96,7 @@ class TestLargeFile:
         result = process_file("big.txt", content)
         assert len(result["chunks"]) > 0
         assert result["size"] == len(content)
-        assert result["char_count"] > 0
+        assert result["word_count"] > 0
 
 
 class TestEncryptedPipeline:
@@ -109,7 +109,7 @@ class TestEncryptedPipeline:
         encrypted = encrypt_file(content, key)
         result = process_file("encrypted.txt", encrypted, key=key)
         assert len(result["chunks"]) >= 1
-        assert result["char_count"] > 0
+        assert result["word_count"] > 0
 
     def test_process_unencrypted_with_key(self):
         """Unencrypted file with key provided should process normally."""

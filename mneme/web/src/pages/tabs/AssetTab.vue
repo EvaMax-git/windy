@@ -114,6 +114,7 @@ interface UploadFileItem {
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 const ALLOWED_EXTENSIONS: Record<string, string[]> = {
   "PDF 文档": [".pdf"],
+  "Word 文档": [".doc", ".docx"],
   "Markdown": [".md"],
   "纯文本": [".txt", ".text"],
   "JSON 数据": [".json"],

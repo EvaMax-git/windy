@@ -702,7 +702,7 @@ def activate_memory(
         aggregate_type="memory",
         aggregate_id=memory_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "memory_id": str(memory_id),
@@ -830,7 +830,7 @@ def create_memory(
         aggregate_type="memory",
         aggregate_id=memory_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "memory_id": str(memory_id),

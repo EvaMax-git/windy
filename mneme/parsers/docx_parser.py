@@ -95,14 +95,16 @@ def _get_paragraph_style(element) -> str | None:
 
 
 def _get_paragraph_text(element) -> str:
-    """Extract text content from a paragraph XML element."""
-    from lxml import etree
+    """Extract text content from a paragraph XML element.
+
+    Walks all descendant w:t elements, including those nested inside
+    w:hyperlink (hyperlinked text) and other containers.
+    """
     nsmap = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     texts = []
-    for run in element.findall("w:r", nsmap):
-        for t in run.findall("w:t", nsmap):
-            if t.text:
-                texts.append(t.text)
+    for t in element.iter(f"{{{nsmap['w']}}}t"):
+        if t.text:
+            texts.append(t.text)
     return "".join(texts)
 
 
@@ -119,8 +121,11 @@ def _table_element_to_markdown(element) -> str:
             for p in tc.findall("w:p", nsmap):
                 t = _get_paragraph_text(p)
                 if t.strip():
+                    if cell_text:
+                        cell_text += " "
                     cell_text += t
-            row.append(cell_text.strip())
+            # Escape pipe characters to avoid breaking Markdown table
+            row.append(cell_text.strip().replace("|", "\\|"))
         if any(cell for cell in row):
             rows_data.append(row)
 

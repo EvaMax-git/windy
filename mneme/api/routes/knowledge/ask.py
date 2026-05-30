@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from fastapi.encoders import jsonable_encoder
@@ -109,7 +109,7 @@ async def ask_question(
         citations.append(AskCitation(
             chunk_id=str(r.chunk_id),
             document_title=r.document_title or "未命名文档",
-            snippet=(r.chunk_text or "")[:300],
+            snippet=(r.chunk_text or "")[:800],
             rank=float(r.rank),
         ))
 
@@ -121,7 +121,7 @@ async def ask_question(
     context_tokens = estimate_tokens(context_text)
 
     # Truncate if too long (leave room for system prompt + question + output)
-    max_context_chars = 12000
+    max_context_chars = 30000
     if len(context_text) > max_context_chars:
         context_text = context_text[:max_context_chars] + "\n...(已截断)"
 
@@ -153,7 +153,7 @@ async def ask_question(
             actor_id=actor.actor_id,
             request_id=context.request_id,
             correlation_id=context.correlation_id,
-            idempotency_key=str(context.idempotency_key or ""),
+            idempotency_key=str(context.idempotency_key or uuid4()),
         )
 
         # Extract answer from OpenAI-compatible response

@@ -370,6 +370,25 @@ class Settings(BaseSettings):
         description="Storage backend identifier (currently only 'mneme_data' supported).",
     )
 
+    # ── Encryption Key Storage (W3) ─────────────────────────────────────────
+    key_dir: str = Field(
+        default="mneme_data/keys",
+        alias="MNEME_KEY_DIR",
+        description="Directory for encryption key storage.",
+    )
+
+    # ── NAS Storage (W3) ────────────────────────────────────────────────────
+    nas_path: str = Field(
+        default="",
+        alias="MNEME_NAS_PATH",
+        description="NAS mount path (e.g. /mnt/nas or //192.168.1.1/share).",
+    )
+    storage_mode: str = Field(
+        default="auto",
+        alias="MNEME_STORAGE_MODE",
+        description="Storage mode: local / nas / auto.",
+    )
+
     @property
     def allowed_mime_types_list(self) -> list[str]:
         return [m.strip() for m in self.allowed_mime_types.split(",") if m.strip()]

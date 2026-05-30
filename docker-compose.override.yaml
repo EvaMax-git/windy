@@ -1,0 +1,7 @@
+services:
+  api:
+    volumes:
+      - ./mneme:/app/mneme
+  worker:
+    volumes:
+      - ./mneme:/app/mneme

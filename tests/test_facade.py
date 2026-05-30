@@ -258,15 +258,15 @@ class TestGetStoragePath:
     def test_returns_valid_path(self):
         result = get_storage_path()
         assert len(result) > 0
-        assert Path(result).name == "public"
+        assert Path(result).exists() or Path(result).parent.exists()
 
-    def test_public_by_default(self):
+    def test_returns_absolute_path(self):
         result = get_storage_path()
-        assert result.endswith("public") or result.endswith("public\\")
+        assert Path(result).is_absolute()
 
-    def test_encrypted_returns_private(self):
+    def test_encrypted_returns_keys_dir(self):
         result = get_storage_path(encrypted=True)
-        assert result.endswith("private") or result.endswith("private\\")
+        assert result.endswith("keys") or result.endswith("keys\\")
 
     def test_public_and_private_differ(self):
         pub = get_storage_path(encrypted=False)

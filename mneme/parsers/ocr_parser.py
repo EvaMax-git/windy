@@ -10,6 +10,20 @@ from __future__ import annotations
 from mneme.parsers.docx_parser import BlockDraft
 
 
+_ocr_instance = None
+
+
+def _get_ocr():
+    """Return a cached PaddleOCR instance (created once per process)."""
+    global _ocr_instance
+    if _ocr_instance is None:
+        import os
+        os.environ.setdefault("FLAGS_use_mkldnn", "0")
+        from paddleocr import PaddleOCR
+        _ocr_instance = PaddleOCR(lang="ch", enable_mkldnn=False)
+    return _ocr_instance
+
+
 def extract_image_bytes(content: bytes) -> list[BlockDraft]:
     """Extract structured text blocks from image bytes via OCR.
 
@@ -18,18 +32,14 @@ def extract_image_bytes(content: bytes) -> list[BlockDraft]:
     lines closer than 1.5× the median line height are merged.
     """
     import io
-    import os
 
     import numpy as np
-    from paddleocr import PaddleOCR
     from PIL import Image
-
-    os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
     img = Image.open(io.BytesIO(content)).convert("RGB")
     img_array = np.array(img)
 
-    ocr = PaddleOCR(lang="ch", enable_mkldnn=False)
+    ocr = _get_ocr()
     result = ocr.predict(img_array)
 
     if not result:

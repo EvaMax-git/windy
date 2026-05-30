@@ -240,7 +240,7 @@ def create_message(
         aggregate_type=object_type,
         aggregate_id=message_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "message_id": str(message_id),
@@ -337,7 +337,7 @@ def create_message_batch(
         aggregate_type=object_type,
         aggregate_id=batch_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "batch_id": str(batch_id),

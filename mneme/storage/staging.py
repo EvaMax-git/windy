@@ -63,6 +63,8 @@ def detect_mime_type(filename: str, content_head: bytes) -> str | None:
 
     Strategy:
     1. Check magic bytes against known signatures.
+       For ZIP-based Office formats (.docx/.xlsx/.pptx), the magic bytes
+       detect ``application/zip`` — we then correct via extension lookup.
     2. Fall back to ``mimetypes.guess_type`` by extension.
     3. Return ``"application/octet-stream"`` as last resort.
     """
@@ -74,6 +76,13 @@ def detect_mime_type(filename: str, content_head: bytes) -> str | None:
                 riff_type = content_head[8:12]
                 if riff_type in _RIFF_TYPES:
                     return _RIFF_TYPES[riff_type]
+            # ZIP-based Office formats (.docx, .xlsx, .pptx, etc.)
+            # Magic bytes say "application/zip" but the real type comes
+            # from the file extension.
+            if mime == "application/zip":
+                ext_mime, _ = mimetypes.guess_type(filename)
+                if ext_mime:
+                    return ext_mime
             return mime
 
     # 2. Extension-based guess

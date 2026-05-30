@@ -56,9 +56,7 @@ _SEARCH_CHUNKS_COUNT = text(
     SELECT count(*)
     FROM knowledge_chunks kc
     JOIN knowledge_documents kd ON kd.document_id = kc.document_id
-    WHERE to_tsvector('simple', kc.chunk_text) @@
-          (plainto_tsquery('simple', :query) ||
-           plainto_tsquery('simple', regexp_replace(:query, '[-_]', ' ', 'g')))
+    WHERE to_tsvector('simple', kc.chunk_text) @@ to_tsquery('simple', :query)
       AND (:project_id IS NULL OR kd.project_id = :project_id)
       AND kd.document_status = 'active'
       AND (:sensitivity_floor IS NULL
@@ -76,8 +74,7 @@ _SEARCH_CHUNKS = text(
       kc.chunk_order,
       kc.chunk_text,
       ts_rank(to_tsvector('simple', kc.chunk_text),
-              plainto_tsquery('simple', :query) ||
-              plainto_tsquery('simple', regexp_replace(:query, '[-_]', ' ', 'g'))) AS rank,
+              to_tsquery('simple', :query)) AS rank,
       kd.title AS document_title,
       kd.canonical_uri AS document_uri,
       kd.sensitivity_level AS document_sensitivity,
@@ -87,9 +84,7 @@ _SEARCH_CHUNKS = text(
     FROM knowledge_chunks kc
     JOIN knowledge_documents kd ON kd.document_id = kc.document_id
     LEFT JOIN knowledge_blocks kb ON kb.block_id = kc.block_id
-    WHERE to_tsvector('simple', kc.chunk_text) @@
-          (plainto_tsquery('simple', :query) ||
-           plainto_tsquery('simple', regexp_replace(:query, '[-_]', ' ', 'g')))
+    WHERE to_tsvector('simple', kc.chunk_text) @@ to_tsquery('simple', :query)
       AND (:project_id IS NULL OR kd.project_id = :project_id)
       AND kd.document_status = 'active'
       AND (:sensitivity_floor IS NULL
@@ -134,6 +129,24 @@ def search_fts(
     # Segment query with jieba for CJK support (fallback: raw query)
     search_query = segment_query(query) if jieba_available() else query
 
+    # Build an OR-based tsquery from meaningful terms only.
+    #
+    # plainto_tsquery uses AND semantics — every term must match.  For
+    # Chinese natural-language queries jieba produces stopwords like
+    # "的", "是", "什么" that never appear in the indexed chunks, so AND
+    # always returns zero rows.  Fix: strip stopwords, then OR the rest.
+    _STOPWORDS = frozenset(
+        "的 了 在 是 我 有 和 就 不 人 都 一 一个 上 也 很 到 说 要 去 你 会 着 没有 看 好 "
+        "自己 这 他 她 它 们 那 什么 怎么 如何 可以 能 吗 呢 吧 啊 哦 嗯 哈 "
+        "this is the a an and or but not in on at to for of with by".split()
+    )
+    terms = [t for t in search_query.split() if t not in _STOPWORDS and len(t) > 1]
+    if terms:
+        tsquery_or = " | ".join(terms)
+    else:
+        # All stopwords — fall back to original AND semantics
+        tsquery_or = search_query
+
     # Normalise sensitivity floor to an ordinal position (1-based for array_position)
     sensitivity_ordinal: int | None = None
     if sensitivity_floor is not None and sensitivity_floor in _SENSITIVITY_ORDER:
@@ -142,7 +155,7 @@ def search_fts(
     total = db.execute(
         _SEARCH_CHUNKS_COUNT,
         {
-            "query": search_query,
+            "query": tsquery_or,
             "project_id": project_id,
             "sensitivity_floor": sensitivity_ordinal,
         },
@@ -152,7 +165,7 @@ def search_fts(
     rows = db.execute(
         _SEARCH_CHUNKS,
         {
-            "query": search_query,
+            "query": tsquery_or,
             "project_id": project_id,
             "sensitivity_floor": sensitivity_ordinal,
             "page_size": page_size,

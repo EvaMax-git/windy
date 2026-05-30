@@ -328,7 +328,7 @@ def create_pipeline_def(
         aggregate_type=object_type,
         aggregate_id=pipeline_def_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "pipeline_code": pipeline_code,
@@ -470,7 +470,7 @@ def create_pipeline_run(
         aggregate_type=object_type,
         aggregate_id=pipeline_run_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "pipeline_def_id": str(pipeline_def_id),
@@ -808,6 +808,7 @@ def asset_import_orchestrator(
             create_document, add_block, insert_chunks, _mark_fts_ready,
         )
         from mneme.knowledge.chunking import chunk_document
+        from mneme.processing.cleaner import clean_text
         from mneme.schemas.knowledge import KnowledgeDocumentCreate, KnowledgeBlockCreate, BlockType
 
         if asset.storage_ref and asset.project_id:
@@ -863,10 +864,15 @@ def asset_import_orchestrator(
                         elif draft.block_type == "table":
                             bt = BlockType.table
 
+                        # A-09~A-12: clean extracted text
+                        cleaned = clean_text(draft.content_markdown)
+                        if not cleaned:
+                            continue
+
                         block_payload = KnowledgeBlockCreate(
                             block_order=draft.block_order,
                             block_type=bt,
-                            content_markdown=draft.content_markdown,
+                            content_markdown=cleaned,
                         )
                         block_ctx = RequestContext(
                             request_id=context.request_id,
@@ -877,7 +883,7 @@ def asset_import_orchestrator(
                         block = add_block(db, block_ctx, document_id=doc.document_id, payload=block_payload)
                         blocks_for_chunking.append({
                             "block_id": block.block_id,
-                            "content_markdown": draft.content_markdown,
+                            "content_markdown": cleaned,
                             "block_order": draft.block_order,
                         })
                 else:
@@ -898,6 +904,10 @@ def asset_import_orchestrator(
                         if len(text) > max_len:
                             text = text[:max_len]
 
+                        # A-09~A-12: clean decoded text
+                        text = clean_text(text)
+
+                    if text and text.strip():
                         block_payload = KnowledgeBlockCreate(
                             block_order=0,
                             block_type=BlockType.paragraph,
@@ -918,10 +928,15 @@ def asset_import_orchestrator(
 
                 if blocks_for_chunking:
                     # Chunk all blocks (structured from parser or plain text fallback)
+                    # A-13: 500 chars per chunk, 50 chars overlap
+                    from mneme.knowledge.chunking import ChunkingStrategy
                     result = chunk_document(
                         document_id=doc.document_id,
                         document_version=doc.current_version,
                         blocks=blocks_for_chunking,
+                        strategy=ChunkingStrategy.fixed_size,
+                        chunk_size=500,
+                        overlap=50,
                     )
 
                     if result.chunks:

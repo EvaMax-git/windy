@@ -604,7 +604,7 @@ def create_document(
         aggregate_type=object_type,
         aggregate_id=document_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "project_id": str(payload.project_id),
@@ -956,7 +956,7 @@ def add_block(
         aggregate_type=object_type,
         aggregate_id=block_id,
         aggregate_version=1,
-        idempotency_key=context.idempotency_key or "",
+        idempotency_key=context.idempotency_key or str(uuid4()),
         producer="mneme-api",
         payload_json={
             "document_id": str(document_id),
